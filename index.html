@@ -1,0 +1,412 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Trophy, Play, Home, AlertCircle, RefreshCw } from 'lucide-react';
+
+// === 1. 구글 앱스 스크립트 웹앱 URL 설정 ===
+// 구글 앱스 스크립트를 배포한 후 얻은 URL을 아래 문자열 안에 넣어주세요.
+// 비어있을 경우, 데모(로컬 스토리지) 모드로 자동 전환되어 즉시 테스트가 가능합니다.
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwqmjrFQZKexbphxB5yUEPFfqApRqIjTEt2LWBxInlzgO8Rohi5WRZOMVjV7bbINsZaZA/exec"; 
+
+// === 2. 원소 데이터 (1~20번 + 기타 주요 원소) ===
+const elementData = [
+  { ko: '수소', sym: 'H' }, { ko: '헬륨', sym: 'He' }, { ko: '리튬', sym: 'Li' }, { ko: '베릴륨', sym: 'Be' },
+  { ko: '붕소', sym: 'B' }, { ko: '탄소', sym: 'C' }, { ko: '질소', sym: 'N' }, { ko: '산소', sym: 'O' },
+  { ko: '플루오린', sym: 'F' }, { ko: '네온', sym: 'Ne' }, { ko: '나트륨', sym: 'Na' }, { ko: '마그네슘', sym: 'Mg' },
+  { ko: '알루미늄', sym: 'Al' }, { ko: '규소', sym: 'Si' }, { ko: '인', sym: 'P' }, { ko: '황', sym: 'S' },
+  { ko: '염소', sym: 'Cl' }, { ko: '아르곤', sym: 'Ar' }, { ko: '칼륨', sym: 'K' }, { ko: '칼슘', sym: 'Ca' },
+  { ko: '철', sym: 'Fe' }, { ko: '망가니즈', sym: 'Mn' }, { ko: '금', sym: 'Au' }, { ko: '은', sym: 'Ag' },
+  { ko: '구리', sym: 'Cu' }, { ko: '아이오딘', sym: 'I' }, { ko: '브로민', sym: 'Br' }, { ko: '납', sym: 'Pb' }
+];
+
+export default function App() {
+  // 앱 화면 상태: 'login', 'game', 'gameover', 'leaderboard'
+  const [screen, setScreen] = useState('login');
+  
+  // 유저 정보 및 게임 상태
+  const [studentInfo, setStudentInfo] = useState('');
+  const [score, setScore] = useState(0);
+  const [lives, setLives] = useState(5);
+  const [level, setLevel] = useState(1);
+  
+  // 떨어지는 단어들 상태
+  const [activeWords, setActiveWords] = useState([]);
+  const [inputValue, setInputValue] = useState('');
+  
+  // 리더보드 데이터 상태
+  const [leaderboardData, setLeaderboardData] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // 게임 루프 및 타이머 Refs
+  const gameLoopRef = useRef();
+  const spawnTimerRef = useRef();
+  const inputRef = useRef(null);
+
+  // --- 리더보드 데이터 가져오기 ---
+  const fetchLeaderboard = async () => {
+    setIsLoading(true);
+    if (GAS_URL) {
+      try {
+        const response = await fetch(GAS_URL);
+        const data = await response.json();
+        setLeaderboardData(data);
+      } catch (error) {
+        console.error("리더보드 로드 실패:", error);
+      }
+    } else {
+      // 데모 모드 (로컬 스토리지 사용)
+      const localData = JSON.parse(localStorage.getItem('soyi_leaderboard') || '[]');
+      localData.sort((a, b) => b.score - a.score);
+      setLeaderboardData(localData.slice(0, 5));
+    }
+    setIsLoading(false);
+  };
+
+  // --- 점수 서버로 전송하기 ---
+  const submitScore = async (finalScore) => {
+    if (GAS_URL) {
+      try {
+        await fetch(GAS_URL, {
+          method: 'POST',
+          body: JSON.stringify({ studentInfo, score: finalScore }),
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' } // GAS CORS 우회용
+        });
+      } catch (error) {
+        console.error("점수 전송 실패:", error);
+      }
+    } else {
+      // 데모 모드
+      const localData = JSON.parse(localStorage.getItem('soyi_leaderboard') || '[]');
+      localData.push({ studentInfo, score: finalScore });
+      localStorage.setItem('soyi_leaderboard', JSON.stringify(localData));
+    }
+  };
+
+  // --- 게임 시작 ---
+  const startGame = () => {
+    if (!studentInfo.trim()) {
+      alert("학번과 이름을 입력해주세요!");
+      return;
+    }
+    setScore(0);
+    setLives(5);
+    setLevel(1);
+    setActiveWords([]);
+    setInputValue('');
+    setScreen('game');
+  };
+
+  // --- 단어 생성 로직 ---
+  const spawnWord = useCallback(() => {
+    const randomElement = elementData[Math.floor(Math.random() * elementData.length)];
+    // 한글이 나오면 기호를, 기호가 나오면 한글을 맞추도록
+    const isSymbolDisplay = Math.random() > 0.5; 
+    
+    const displayWord = isSymbolDisplay ? randomElement.sym : randomElement.ko;
+    const answerWord = isSymbolDisplay ? randomElement.ko : randomElement.sym;
+    
+    // x 좌표 랜덤 배치 (10% ~ 80% 사이)
+    const xPos = 10 + Math.random() * 70;
+    
+    setActiveWords(prev => [
+      ...prev,
+      {
+        id: Date.now() + Math.random(),
+        display: displayWord,
+        answer: answerWord,
+        x: xPos,
+        y: 0,
+      }
+    ]);
+  }, []);
+
+  // --- 게임 루프 (떨어지는 애니메이션) ---
+  useEffect(() => {
+    if (screen !== 'game') return;
+
+    // 레벨에 따른 속도 및 스폰 주기 설정 (전체적으로 속도 하향 조정)
+    const currentSpeed = 0.15 + (level * 0.05); // 기존보다 떨어지는 속도 대폭 감소 (기본속도 0.5->0.15)
+    const spawnRate = Math.max(1200, 3000 - (level * 200)); // 단어 생성 주기도 약간 늘려서 밸런스 조절
+
+    // 단어 낙하 루프
+    const updateGame = () => {
+      setActiveWords(prevWords => {
+        let missedCount = 0;
+        const nextWords = prevWords.map(word => ({
+          ...word,
+          y: word.y + currentSpeed
+        })).filter(word => {
+          if (word.y >= 90) { // 화면 하단 도달 시
+            missedCount++;
+            return false;
+          }
+          return true;
+        });
+
+        if (missedCount > 0) {
+          setLives(l => {
+            const newLives = l - missedCount;
+            if (newLives <= 0) {
+              endGame();
+            }
+            return newLives;
+          });
+        }
+        return nextWords;
+      });
+      gameLoopRef.current = requestAnimationFrame(updateGame);
+    };
+
+    gameLoopRef.current = requestAnimationFrame(updateGame);
+
+    // 단어 생성 타이머
+    spawnTimerRef.current = setInterval(spawnWord, spawnRate);
+
+    // 태블릿 키보드가 올라올 때를 대비해 input에 포커스 유지 시도
+    if(inputRef.current) inputRef.current.focus();
+
+    return () => {
+      cancelAnimationFrame(gameLoopRef.current);
+      clearInterval(spawnTimerRef.current);
+    };
+  }, [screen, level, spawnWord]);
+
+  // --- 게임 오버 처리 ---
+  const endGame = () => {
+    setScreen('gameover');
+    cancelAnimationFrame(gameLoopRef.current);
+    clearInterval(spawnTimerRef.current);
+    
+    // 최신 스코어를 전송하기 위해 setTimeout 사용 (state 업데이트 동기화 위함)
+    setTimeout(() => {
+      setScore(currentScore => {
+        submitScore(currentScore);
+        return currentScore;
+      });
+    }, 0);
+  };
+
+  // --- 단어 입력 처리 ---
+  const handleInputSubmit = (e) => {
+    e.preventDefault();
+    const typed = inputValue.trim().toLowerCase(); // 대소문자 무시 처리 (학생 배려)
+    
+    if(!typed) return;
+
+    let matchedId = null;
+    
+    // 화면에 있는 단어 중 정답과 일치하는지 확인 (가장 아래에 있는 단어부터 맞춤)
+    const sortedWords = [...activeWords].sort((a, b) => b.y - a.y);
+    
+    for (let word of sortedWords) {
+      if (word.answer.toLowerCase() === typed) {
+        matchedId = word.id;
+        break;
+      }
+    }
+
+    if (matchedId) {
+      setActiveWords(prev => prev.filter(w => w.id !== matchedId));
+      setScore(s => {
+        const newScore = s + 10;
+        // 100점 단위로 레벨 업
+        if (newScore % 100 === 0) setLevel(l => l + 1);
+        return newScore;
+      });
+      setInputValue('');
+    } else {
+      // 오타 시 화면 흔들림 효과나 이펙트를 줄 수도 있습니다 (생략)
+      setInputValue('');
+    }
+  };
+
+  // === 화면 렌더링 함수들 ===
+
+  // 1. 로그인 화면
+  const renderLogin = () => (
+    <div className="flex flex-col items-center justify-center h-full p-6 bg-gradient-to-b from-blue-900 to-indigo-900 text-white rounded-2xl shadow-2xl">
+      <div className="mb-8 text-center animate-bounce">
+        <Trophy className="w-20 h-20 mx-auto text-yellow-400 mb-4" />
+        <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-600 drop-shadow-lg">
+          쏘이쌤배
+        </h1>
+        <h2 className="text-3xl md:text-4xl font-bold mt-2">원소기호 산성비 대회</h2>
+      </div>
+
+      <div className="w-full max-w-sm bg-white/10 p-6 rounded-xl backdrop-blur-sm border border-white/20">
+        <label className="block text-sm font-medium mb-2 text-blue-200">참가자 정보 (학번 이름)</label>
+        <input
+          type="text"
+          placeholder="예: 20101 홍길동"
+          className="w-full p-4 mb-6 rounded-lg text-gray-900 text-lg font-bold text-center focus:outline-none focus:ring-4 focus:ring-yellow-400 placeholder-gray-400"
+          value={studentInfo}
+          onChange={(e) => setStudentInfo(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && startGame()}
+        />
+        
+        <div className="flex flex-col gap-3">
+          <button 
+            onClick={startGame}
+            className="w-full flex items-center justify-center gap-2 bg-yellow-400 hover:bg-yellow-500 text-blue-900 p-4 rounded-lg font-bold text-xl transition-transform active:scale-95 shadow-lg"
+          >
+            <Play className="fill-current" /> 게임 시작하기
+          </button>
+          
+          <button 
+            onClick={() => { fetchLeaderboard(); setScreen('leaderboard'); }}
+            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-lg font-bold text-lg transition-transform active:scale-95 shadow-lg"
+          >
+            <Trophy /> 순위보드 확인
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // 2. 게임 화면
+  const renderGame = () => (
+    <div className="flex flex-col h-full bg-slate-900 text-white relative rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-800">
+      {/* 상단 UI (점수, 레벨, 생명) */}
+      <div className="absolute top-0 w-full flex justify-between p-4 z-10 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
+        <div className="flex flex-col">
+          <span className="text-yellow-400 font-bold text-2xl drop-shadow-md">점수: {score}</span>
+          <span className="text-blue-300 font-semibold text-lg drop-shadow-md">레벨: {level}</span>
+        </div>
+        <div className="flex text-red-500 gap-1 drop-shadow-md">
+          {[...Array(5)].map((_, i) => (
+            <svg key={i} className={`w-8 h-8 ${i >= lives ? 'opacity-30' : ''}`} fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+            </svg>
+          ))}
+        </div>
+      </div>
+
+      {/* 게임 낙하 영역 */}
+      <div className="flex-1 relative overflow-hidden bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0iI2ZmZmZmZjIwIi8+PC9zdmc+')]">
+        {activeWords.map(word => (
+          <div
+            key={word.id}
+            className="absolute p-2 bg-blue-600/80 backdrop-blur rounded-lg shadow-lg border border-blue-400 font-bold text-2xl whitespace-nowrap transition-transform"
+            style={{ 
+              left: `${word.x}%`, 
+              top: `${word.y}%`,
+              transform: 'translateX(-50%)'
+            }}
+          >
+            {word.display}
+          </div>
+        ))}
+      </div>
+
+      {/* 하단 입력 영역 (태블릿 키보드 고려) */}
+      <div className="p-4 bg-slate-800 shrink-0">
+        <div className="text-center text-sm text-gray-400 mb-2">
+          원소기호가 나오면 <span className="text-white">한글</span>로, 한글이 나오면 <span className="text-white">원소기호</span>를 입력하세요!
+        </div>
+        <form onSubmit={handleInputSubmit} className="flex gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            className="flex-1 p-4 rounded-xl text-center text-xl font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-yellow-400"
+            placeholder="입력 후 엔터(이동)!"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            autoComplete="off"
+            autoCapitalize="off"
+            autoCorrect="off"
+          />
+        </form>
+      </div>
+    </div>
+  );
+
+  // 3. 게임 오버 화면
+  const renderGameOver = () => (
+    <div className="flex flex-col items-center justify-center h-full p-6 bg-slate-900 text-white rounded-2xl shadow-2xl">
+      <AlertCircle className="w-24 h-24 text-red-500 mb-6 animate-pulse" />
+      <h2 className="text-5xl font-black text-white mb-2">게임 종료!</h2>
+      <p className="text-2xl text-blue-300 mb-8">{studentInfo} 학생의 기록</p>
+      
+      <div className="bg-white/10 p-8 rounded-2xl backdrop-blur-md border border-white/20 text-center w-full max-w-sm mb-8">
+        <p className="text-gray-400 text-lg mb-1">최종 점수</p>
+        <p className="text-6xl font-black text-yellow-400">{score}<span className="text-2xl text-yellow-200"> 점</span></p>
+        <p className="text-gray-400 mt-4">도달 레벨: {level}</p>
+      </div>
+
+      <div className="flex gap-4 w-full max-w-sm">
+        <button 
+          onClick={startGame}
+          className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 p-4 rounded-xl font-bold text-lg transition-transform active:scale-95"
+        >
+          <RefreshCw className="w-5 h-5" /> 다시하기
+        </button>
+        <button 
+          onClick={() => { fetchLeaderboard(); setScreen('leaderboard'); }}
+          className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 p-4 rounded-xl font-bold text-lg transition-transform active:scale-95"
+        >
+          <Trophy className="w-5 h-5" /> 순위보기
+        </button>
+      </div>
+    </div>
+  );
+
+  // 4. 리더보드 화면
+  const renderLeaderboard = () => (
+    <div className="flex flex-col h-full p-6 bg-gradient-to-br from-indigo-900 to-purple-900 text-white rounded-2xl shadow-2xl">
+      <div className="flex items-center justify-between mb-8">
+        <h2 className="text-3xl font-black flex items-center gap-3 text-yellow-400">
+          <Trophy className="w-8 h-8" /> 명예의 전당
+        </h2>
+        <button 
+          onClick={() => setScreen('login')}
+          className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors"
+        >
+          <Home className="w-6 h-6" />
+        </button>
+      </div>
+
+      <div className="flex-1 bg-white/10 rounded-xl p-4 backdrop-blur-md border border-white/20 overflow-y-auto">
+        {isLoading ? (
+          <div className="flex justify-center items-center h-full text-blue-200">데이터를 불러오는 중...</div>
+        ) : leaderboardData.length === 0 ? (
+          <div className="flex justify-center items-center h-full text-gray-400 text-center">
+            아직 기록이 없습니다.<br/>첫 번째 도전자 되어보세요!
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {leaderboardData.map((data, index) => (
+              <div 
+                key={index} 
+                className={`flex items-center justify-between p-4 rounded-lg font-bold
+                  ${index === 0 ? 'bg-yellow-400 text-yellow-900 shadow-lg scale-105 my-2' : 
+                    index === 1 ? 'bg-gray-300 text-gray-900' : 
+                    index === 2 ? 'bg-amber-600 text-amber-100' : 'bg-white/5 text-blue-100'}`}
+              >
+                <div className="flex items-center gap-4">
+                  <span className="text-xl w-6 text-center">{index + 1}</span>
+                  <span className="text-lg">{data.studentInfo}</span>
+                </div>
+                <span className="text-2xl">{data.score}점</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      
+      {!GAS_URL && (
+        <p className="text-center text-xs text-red-300 mt-4 bg-red-900/50 p-2 rounded">
+          * 현재 구글 시트가 연결되지 않아 내 기기에만 저장되는 데모 모드입니다.
+        </p>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="w-full h-screen bg-black flex items-center justify-center p-4 font-sans">
+      <div className="w-full max-w-md h-[85vh] min-h-[600px] bg-slate-900 rounded-3xl shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden relative border-8 border-slate-900">
+        {screen === 'login' && renderLogin()}
+        {screen === 'game' && renderGame()}
+        {screen === 'gameover' && renderGameOver()}
+        {screen === 'leaderboard' && renderLeaderboard()}
+      </div>
+    </div>
+  );
+}
