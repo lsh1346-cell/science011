@@ -1,412 +1,1035 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Trophy, Play, Home, AlertCircle, RefreshCw } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>쏘이쌤배 원소기호 산성비 대회</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome for Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Jua&family=Nanum+Gothic:wght@400;700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Nanum Gothic', sans-serif;
+    }
+    .title-font {
+      font-family: 'Jua', sans-serif;
+    }
+    /* 애니메이션 효과 */
+    @keyframes drop {
+      0% { transform: translateY(-50px); opacity: 0; }
+      10% { opacity: 1; }
+      100% { transform: translateY(100%); }
+    }
+    /* 빗방울 스타일 */
+    .droplet {
+      position: absolute;
+      will-change: transform;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between overflow-hidden select-none">
 
-// === 1. 구글 앱스 스크립트 웹앱 URL 설정 ===
-// 구글 앱스 스크립트를 배포한 후 얻은 URL을 아래 문자열 안에 넣어주세요.
-// 비어있을 경우, 데모(로컬 스토리지) 모드로 자동 전환되어 즉시 테스트가 가능합니다.
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwqmjrFQZKexbphxB5yUEPFfqApRqIjTEt2LWBxInlzgO8Rohi5WRZOMVjV7bbINsZaZA/exec"; 
+  <!-- ★ 중요: 구글 앱스 스크립트 웹앱 URL 입력하는 곳 ★ -->
+  <!-- 구글 스프레드시트 앱스스크립트 배포 후 아래 빈 값에 URL을 넣으면 실제 연동됩니다. -->
+  <script>
+    const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbxBH9m1_LrXguK9-VPxF0-PiXi6jKCoxgoVXMhUoMzofHoDgGflNoHkXmeFVDtUNWDx6Q/exec"; 
+  </script>
 
-// === 2. 원소 데이터 (1~20번 + 기타 주요 원소) ===
-const elementData = [
-  { ko: '수소', sym: 'H' }, { ko: '헬륨', sym: 'He' }, { ko: '리튬', sym: 'Li' }, { ko: '베릴륨', sym: 'Be' },
-  { ko: '붕소', sym: 'B' }, { ko: '탄소', sym: 'C' }, { ko: '질소', sym: 'N' }, { ko: '산소', sym: 'O' },
-  { ko: '플루오린', sym: 'F' }, { ko: '네온', sym: 'Ne' }, { ko: '나트륨', sym: 'Na' }, { ko: '마그네슘', sym: 'Mg' },
-  { ko: '알루미늄', sym: 'Al' }, { ko: '규소', sym: 'Si' }, { ko: '인', sym: 'P' }, { ko: '황', sym: 'S' },
-  { ko: '염소', sym: 'Cl' }, { ko: '아르곤', sym: 'Ar' }, { ko: '칼륨', sym: 'K' }, { ko: '칼슘', sym: 'Ca' },
-  { ko: '철', sym: 'Fe' }, { ko: '망가니즈', sym: 'Mn' }, { ko: '금', sym: 'Au' }, { ko: '은', sym: 'Ag' },
-  { ko: '구리', sym: 'Cu' }, { ko: '아이오딘', sym: 'I' }, { ko: '브로민', sym: 'Br' }, { ko: '납', sym: 'Pb' }
-];
+  <!-- 메인 헤더 (고정) -->
+  <header class="bg-slate-800 border-b border-indigo-500/30 p-4 flex justify-between items-center z-10 shadow-lg">
+    <div class="flex items-center space-x-3">
+      <div class="bg-indigo-600 text-white p-2 rounded-lg text-lg font-bold">
+        <i class="fa-solid fa-flask-vial animate-bounce text-yellow-300"></i>
+      </div>
+      <h1 class="title-font text-xl md:text-2xl text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-indigo-400">
+        쏘이쌤배 원소기호 산성비 대회
+      </h1>
+    </div>
+    <div id="user-display" class="hidden text-sm md:text-base font-bold bg-slate-700 px-3 py-1.5 rounded-full border border-slate-600">
+      <i class="fa-solid fa-user text-teal-400 mr-2"></i><span id="display-student-info">20101 홍길동</span>
+    </div>
+  </header>
 
-export default function App() {
-  // 앱 화면 상태: 'login', 'game', 'gameover', 'leaderboard'
-  const [screen, setScreen] = useState('login');
-  
-  // 유저 정보 및 게임 상태
-  const [studentInfo, setStudentInfo] = useState('');
-  const [score, setScore] = useState(0);
-  const [lives, setLives] = useState(5);
-  const [level, setLevel] = useState(1);
-  
-  // 떨어지는 단어들 상태
-  const [activeWords, setActiveWords] = useState([]);
-  const [inputValue, setInputValue] = useState('');
-  
-  // 리더보드 데이터 상태
-  const [leaderboardData, setLeaderboardData] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  <!-- 메인 영역 -->
+  <main class="flex-1 relative w-full max-w-5xl mx-auto p-4 flex flex-col justify-center items-center">
 
-  // 게임 루프 및 타이머 Refs
-  const gameLoopRef = useRef();
-  const spawnTimerRef = useRef();
-  const inputRef = useRef(null);
+    <!-- 1. 대기실/로그인 페이지 -->
+    <div id="lobby-screen" class="w-full max-w-md bg-slate-800/90 border border-slate-700 p-6 md:p-8 rounded-2xl shadow-2xl space-y-6 z-10 backdrop-blur-sm">
+      <div class="text-center space-y-2">
+        <div class="inline-block bg-indigo-500/10 text-indigo-400 px-4 py-1 rounded-full text-xs font-bold border border-indigo-500/20 uppercase tracking-widest">
+          Middle School Science - Grade 2
+        </div>
+        <h2 class="title-font text-3xl md:text-4xl text-indigo-400 mt-2">원소 타자 마스터</h2>
+        <p class="text-slate-400 text-sm">원소 기호가 내려오면 원소 이름을, 원소 이름이 내려오면 원소 기호를 타이핑하세요!</p>
+      </div>
 
-  // --- 리더보드 데이터 가져오기 ---
-  const fetchLeaderboard = async () => {
-    setIsLoading(true);
-    if (GAS_URL) {
-      try {
-        const response = await fetch(GAS_URL);
-        const data = await response.json();
-        setLeaderboardData(data);
-      } catch (error) {
-        console.error("리더보드 로드 실패:", error);
+      <!-- 학생 정보 입력 폼 -->
+      <div class="space-y-4">
+        <div>
+          <label for="student-number" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">학번 (예: 20101)</label>
+          <input type="number" id="student-number" placeholder="5자리 학번 입력" 
+            class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500 text-lg text-center tracking-widest font-bold">
+        </div>
+        <div>
+          <label for="student-name" class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">이름 (예: 홍길동)</label>
+          <input type="text" id="student-name" placeholder="이름 입력" 
+            class="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500 text-lg text-center font-bold">
+        </div>
+      </div>
+
+      <!-- 버튼 가이드 및 실행 -->
+      <div class="grid grid-cols-2 gap-4 pt-2">
+        <button onclick="showLeaderboard()" class="w-full py-3.5 bg-slate-700 hover:bg-slate-600 transition-all font-bold rounded-xl flex items-center justify-center space-x-2 border border-slate-600">
+          <i class="fa-solid fa-trophy text-yellow-400"></i>
+          <span>순위보더</span>
+        </button>
+        <button onclick="startGameSetup()" class="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 transition-all font-bold rounded-xl flex items-center justify-center space-x-2 shadow-lg shadow-indigo-600/30">
+          <i class="fa-solid fa-play"></i>
+          <span>게임 시작</span>
+        </button>
+      </div>
+
+      <!-- 게임 팁 박스 -->
+      <div class="bg-slate-900/60 p-4 rounded-xl border border-slate-800 text-xs text-slate-400 space-y-1.5">
+        <p class="font-bold text-slate-300"><i class="fa-solid fa-circle-info text-teal-400 mr-1"></i> 게임 팁 및 수록 범위:</p>
+        <ul class="list-disc pl-4 space-y-0.5">
+          <li>1번~20번 원소 전체 수록 (H부터 Ca까지)</li>
+          <li>기타 필수 원소 포함 (Fe, Mn, Au, Ag, Cu, I, Br, Pb)</li>
+          <li>원소명이 떨어지면 <strong class="text-indigo-300">원소 기호(대소문자 구분 필수!)</strong>를 입력하세요.</li>
+          <li>원소 기호가 떨어지면 <strong class="text-indigo-300">한글 원소 이름</strong>을 입력하세요.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- 2. 게임 화면 -->
+    <div id="game-screen" class="hidden w-full h-[65vh] md:h-[70vh] bg-slate-950/80 border border-slate-800 rounded-2xl shadow-2xl relative overflow-hidden flex flex-col justify-between">
+      
+      <!-- 상단 스탯바 -->
+      <div class="bg-slate-900/90 border-b border-slate-800 px-4 py-3 flex justify-between items-center z-10">
+        <div class="flex items-center space-x-6 text-sm md:text-base font-bold">
+          <div class="flex items-center space-x-2">
+            <span class="text-slate-400">점수:</span>
+            <span id="score-val" class="text-yellow-400 text-lg md:text-xl font-extrabold tracking-wider">0</span>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span class="text-slate-400">생명:</span>
+            <div id="hearts" class="flex space-x-1 text-red-500 text-base md:text-lg">
+              <i class="fa-solid fa-heart"></i>
+              <i class="fa-solid fa-heart"></i>
+              <i class="fa-solid fa-heart"></i>
+              <i class="fa-solid fa-heart"></i>
+              <i class="fa-solid fa-heart"></i>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span class="text-slate-400">레벨:</span>
+            <span id="level-val" class="text-teal-400 text-lg font-extrabold">1</span>
+          </div>
+        </div>
+        <button onclick="confirmExit()" class="text-slate-400 hover:text-red-400 text-sm flex items-center space-x-1 px-2 py-1 rounded bg-slate-800 border border-slate-700">
+          <i class="fa-solid fa-arrow-right-from-bracket"></i>
+          <span class="hidden md:inline">나가기</span>
+        </button>
+      </div>
+
+      <!-- 산성비 빗방울이 떨어지는 게임 캔버스 영역 -->
+      <div id="game-canvas" class="flex-1 relative w-full overflow-hidden">
+        <!-- 빗방울 객체들이 자바스크립트로 동적 생성되어 들어갑니다 -->
+        
+        <!-- 바닥 감지선 및 산성 바다 시각화 -->
+        <div class="absolute bottom-0 left-0 right-0 h-2 bg-gradient-to-r from-red-600 to-indigo-600 animate-pulse border-t border-red-500/50"></div>
+      </div>
+
+      <!-- 하단 타이핑 및 제어판 -->
+      <div class="bg-slate-900/90 border-t border-slate-800 p-4 flex flex-col md:flex-row items-center justify-between gap-3 z-10">
+        <!-- 태블릿 유저를 위한 대소문자 전환 유틸리티 버튼 -->
+        <div class="flex items-center space-x-2 w-full md:w-auto">
+          <button id="case-toggle-btn" onclick="toggleCase()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700 text-xs font-bold whitespace-nowrap">
+            <i class="fa-solid fa-font"></i> 대/소문자 전환
+          </button>
+          <div id="input-tip" class="text-xs text-slate-400 hidden md:block">
+            대소문자를 꼭 지켜야 점수가 인정됩니다! (예: He, Fe, Na)
+          </div>
+        </div>
+
+        <!-- 입력란 -->
+        <div class="relative w-full max-w-md flex items-center">
+          <input type="text" id="game-input" placeholder="이곳에 정답을 입력하고 Enter!" autocomplete="off"
+            class="w-full px-5 py-3.5 bg-slate-950 border-2 border-indigo-500 rounded-2xl focus:outline-none focus:ring-2 focus:ring-indigo-400/50 text-center text-xl font-bold tracking-wide placeholder:text-slate-600">
+          <button onclick="checkInputSubmit()" class="absolute right-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-sm font-bold shadow-md">
+            입력
+          </button>
+        </div>
+
+        <div class="text-xs text-slate-500 hidden lg:block">
+          점수별 속도 증가: 100점마다 스피드 업!
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. 리더보드 (순위보더) 모달 -->
+    <div id="leaderboard-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div class="w-full max-w-md bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-2xl flex flex-col max-h-[85vh]">
+        <div class="flex justify-between items-center pb-4 border-b border-slate-700 mb-4">
+          <div class="flex items-center space-x-2">
+            <i class="fa-solid fa-ranking-star text-yellow-400 text-xl"></i>
+            <h3 class="title-font text-2xl text-slate-100">쏘이쌤배 TOP 5 순위보더</h3>
+          </div>
+          <button onclick="closeLeaderboard()" class="text-slate-400 hover:text-slate-200 text-xl p-1">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <!-- 랭킹 목록 -->
+        <div class="flex-1 overflow-y-auto space-y-3 py-2 pr-1" id="leaderboard-list">
+          <!-- 로딩 스피너 및 랭킹 데이터가 여기에 랜더링 됨 -->
+          <div class="text-center py-8 text-slate-400">
+            <i class="fa-solid fa-spinner animate-spin text-2xl text-indigo-400 mb-2"></i>
+            <p>서버에서 실시간 순위를 가져오는 중...</p>
+          </div>
+        </div>
+
+        <div class="pt-4 border-t border-slate-700 mt-4 text-center">
+          <p class="text-xs text-slate-500 mb-3"><i class="fa-solid fa-database mr-1"></i>구글 스프레드시트 '순위보더' 연동 기반</p>
+          <button onclick="closeLeaderboard()" class="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-sm font-bold rounded-xl">
+            닫기
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. 결과 및 데이터 전송 스크린 -->
+    <div id="result-screen" class="hidden w-full max-w-md bg-slate-800 border border-slate-700 p-6 md:p-8 rounded-2xl shadow-2xl space-y-6 z-10 text-center">
+      <div class="space-y-2">
+        <div class="text-5xl text-red-500 animate-pulse">
+          <i class="fa-solid fa-skull-crossbones"></i>
+        </div>
+        <h2 class="title-font text-3xl text-red-400">GAME OVER</h2>
+        <p class="text-slate-400 text-sm">산성비가 너무 강해 실험실이 손상되었습니다!</p>
+      </div>
+
+      <!-- 성적 요약 카드 -->
+      <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl space-y-3">
+        <p class="text-slate-400 font-bold" id="result-student-info">20101 홍길동</p>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+            <p class="text-xs text-slate-500">최종 점수</p>
+            <p id="final-score" class="text-2xl font-extrabold text-yellow-400">0점</p>
+          </div>
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+            <p class="text-xs text-slate-500">도달 레벨</p>
+            <p id="final-level" class="text-2xl font-extrabold text-teal-400">Lv.1</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 기록 자동 전송 상태 표시 영역 -->
+      <div class="space-y-3 py-2 bg-slate-900/50 rounded-xl border border-slate-800" id="db-action-area">
+        <div id="submit-loader" class="text-slate-400 text-sm py-2 flex items-center justify-center">
+          <i class="fa-solid fa-spinner animate-spin mr-2 text-indigo-400 text-lg"></i>
+          <span>구글 스프레드시트에 점수 자동 기록 중...</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3 pt-2">
+        <button onclick="showLeaderboard()" class="py-3 bg-slate-700 hover:bg-slate-600 font-bold rounded-xl text-sm flex items-center justify-center space-x-1">
+          <i class="fa-solid fa-trophy text-yellow-400"></i>
+          <span>순위 확인</span>
+        </button>
+        <button onclick="resetToLobby()" class="py-3 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl text-sm flex items-center justify-center space-x-1">
+          <i class="fa-solid fa-rotate-right"></i>
+          <span>처음으로</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 5. 가상 모달 (경고/안내용 브라우저 alert 대체용) -->
+    <div id="alert-modal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div class="w-full max-w-sm bg-slate-800 border border-slate-700 p-6 rounded-xl shadow-xl text-center space-y-4">
+        <div id="alert-icon" class="text-3xl text-indigo-400">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <p id="alert-message" class="text-slate-200 font-bold text-base whitespace-pre-wrap"></p>
+        <div class="flex space-x-3 justify-center">
+          <button id="alert-btn-cancel" onclick="closeAlertModal()" class="hidden px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-bold">
+            취소
+          </button>
+          <button id="alert-btn-confirm" onclick="closeAlertModal()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-sm font-bold">
+            확인
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 가상 키보드 가이드 및 푸터 -->
+  <footer class="bg-slate-950 text-slate-500 py-3 text-center text-xs border-t border-slate-800 z-10">
+    <div class="max-w-5xl mx-auto px-4 flex flex-col md:flex-row justify-between items-center gap-2">
+      <p>&copy; 2026 쏘이쌤의 가상실험실. All Rights Reserved.</p>
+      <p class="flex items-center gap-3">
+        <span>태블릿 PC 최적화 모드 <i class="fa-solid fa-tablet-screen-button text-teal-500"></i></span>
+        <span>|</span>
+        <span class="text-slate-400">화학의 기초, 원소기호 산성비!</span>
+      </p>
+    </div>
+  </footer>
+
+  <!-- 로컬 테스트용 가상 랭킹 데이터 -->
+  <script>
+    let localRankings = [
+      { "학생정보": "20102 강민우", "스코어": 850 },
+      { "학생정보": "20311 이서연", "스코어": 720 },
+      { "학생정보": "20515 김준영", "스코어": 610 },
+      { "학생정보": "20204 박서현", "스코어": 530 },
+      { "학생정보": "20422 최지훈", "스코어": 480 }
+    ];
+  </script>
+
+  <!-- 게임 메인 로직 자바스크립트 -->
+  <script>
+    // --- 원소 및 화학식 데이터베이스 (전체 28종) ---
+    // 1~20번 + 철(Fe), 망가니즈(Mn), 금(Au), 은(Ag), 구리(Cu), 아이오딘(I), 브로민(Br), 납(Pb)
+    const elementData = [
+      { num: 1, symbol: "H", name: "수소" },
+      { num: 2, symbol: "He", name: "헬륨" },
+      { num: 3, symbol: "Li", name: "리튬" },
+      { num: 4, symbol: "Be", name: "베릴륨" },
+      { num: 5, symbol: "B", name: "붕소" },
+      { num: 6, symbol: "C", name: "탄소" },
+      { num: 7, symbol: "N", name: "질소" },
+      { num: 8, symbol: "O", name: "산소" },
+      { num: 9, symbol: "F", name: "플루오린" },
+      { num: 10, symbol: "Ne", name: "네온" },
+      { num: 11, symbol: "Na", name: "나트륨" },
+      { num: 12, symbol: "Mg", name: "마그네슘" },
+      { num: 13, symbol: "Al", name: "알루미늄" },
+      { num: 14, symbol: "Si", name: "규소" },
+      { num: 15, symbol: "P", name: "인" },
+      { num: 16, symbol: "S", name: "황" },
+      { num: 17, symbol: "Cl", name: "염소" },
+      { num: 18, symbol: "Ar", name: "아르곤" },
+      { num: 19, symbol: "K", name: "칼륨" },
+      { num: 20, symbol: "Ca", name: "칼슘" },
+      { num: 21, symbol: "Fe", name: "철" },
+      { num: 22, symbol: "Mn", name: "망가니즈" },
+      { num: 23, symbol: "Au", name: "금" },
+      { num: 24, symbol: "Ag", name: "은" },
+      { num: 25, symbol: "Cu", name: "구리" },
+      { num: 26, symbol: "I", name: "아이오딘" },
+      { num: 27, symbol: "Br", name: "브로민" },
+      { num: 28, symbol: "Pb", name: "납" }
+    ];
+
+    // 게임 상태 변수
+    let score = 0;
+    let lives = 5;
+    let level = 1;
+    let studentNumber = "";
+    let studentName = "";
+    let isGameRunning = false;
+    let spawnTimer = null;
+    let droplets = []; // 화면 상의 빗방울 객체들
+    let baseSpeed = 1.2; // 기본 속도 (초당 하강 비율)
+    let speedMultiplier = 1.0; // 난이도에 따른 배수
+    let spawnInterval = 2500; // 빗방울 생성 주기 (ms)
+
+    // 게임 루프용 requestAnimationFrame ID
+    let gameLoopId = null;
+    let lastTime = 0;
+
+    // --- 커스텀 경고 모달 시스템 ---
+    let confirmCallback = null;
+
+    function showAlert(message, isConfirm = false, onConfirm = null) {
+      document.getElementById('alert-message').innerText = message;
+      const cancelBtn = document.getElementById('alert-btn-cancel');
+      
+      if (isConfirm) {
+        cancelBtn.classList.remove('hidden');
+        confirmCallback = onConfirm;
+      } else {
+        cancelBtn.classList.add('hidden');
+        confirmCallback = null;
       }
-    } else {
-      // 데모 모드 (로컬 스토리지 사용)
-      const localData = JSON.parse(localStorage.getItem('soyi_leaderboard') || '[]');
-      localData.sort((a, b) => b.score - a.score);
-      setLeaderboardData(localData.slice(0, 5));
+      
+      document.getElementById('alert-modal').classList.remove('hidden');
     }
-    setIsLoading(false);
-  };
 
-  // --- 점수 서버로 전송하기 ---
-  const submitScore = async (finalScore) => {
-    if (GAS_URL) {
-      try {
-        await fetch(GAS_URL, {
-          method: 'POST',
-          body: JSON.stringify({ studentInfo, score: finalScore }),
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' } // GAS CORS 우회용
-        });
-      } catch (error) {
-        console.error("점수 전송 실패:", error);
+    function closeAlertModal() {
+      document.getElementById('alert-modal').classList.add('hidden');
+    }
+
+    function handleAlertConfirm() {
+      closeAlertModal();
+      if (confirmCallback) {
+        confirmCallback();
+        confirmCallback = null;
       }
-    } else {
-      // 데모 모드
-      const localData = JSON.parse(localStorage.getItem('soyi_leaderboard') || '[]');
-      localData.push({ studentInfo, score: finalScore });
-      localStorage.setItem('soyi_leaderboard', JSON.stringify(localData));
     }
-  };
+    
+    // 모달 확인 버튼 클릭 바인딩
+    document.getElementById('alert-btn-confirm').onclick = handleAlertConfirm;
 
-  // --- 게임 시작 ---
-  const startGame = () => {
-    if (!studentInfo.trim()) {
-      alert("학번과 이름을 입력해주세요!");
-      return;
+
+    // --- 로비 컨트롤 ---
+    function startGameSetup() {
+      const numInput = document.getElementById('student-number').value.trim();
+      const nameInput = document.getElementById('student-name').value.trim();
+
+      if (!numInput || numInput.length !== 5) {
+        showAlert("학번을 올바른 5자리로 입력해 주세요!\n(예: 20101)");
+        return;
+      }
+      if (!nameInput) {
+        showAlert("이름을 입력해 주세요!");
+        return;
+      }
+
+      studentNumber = numInput;
+      studentName = nameInput;
+
+      // 사용자 정보 표시 업데이트
+      document.getElementById('display-student-info').innerText = `${studentNumber} ${studentName}`;
+      document.getElementById('user-display').classList.remove('hidden');
+
+      // 화면 전환
+      document.getElementById('lobby-screen').classList.add('hidden');
+      document.getElementById('game-screen').classList.remove('hidden');
+
+      // 게임 시작
+      initGame();
     }
-    setScore(0);
-    setLives(5);
-    setLevel(1);
-    setActiveWords([]);
-    setInputValue('');
-    setScreen('game');
-  };
 
-  // --- 단어 생성 로직 ---
-  const spawnWord = useCallback(() => {
-    const randomElement = elementData[Math.floor(Math.random() * elementData.length)];
-    // 한글이 나오면 기호를, 기호가 나오면 한글을 맞추도록
-    const isSymbolDisplay = Math.random() > 0.5; 
-    
-    const displayWord = isSymbolDisplay ? randomElement.sym : randomElement.ko;
-    const answerWord = isSymbolDisplay ? randomElement.ko : randomElement.sym;
-    
-    // x 좌표 랜덤 배치 (10% ~ 80% 사이)
-    const xPos = 10 + Math.random() * 70;
-    
-    setActiveWords(prev => [
-      ...prev,
-      {
-        id: Date.now() + Math.random(),
-        display: displayWord,
-        answer: answerWord,
+    function initGame() {
+      score = 0;
+      lives = 5;
+      level = 1;
+      droplets = [];
+      speedMultiplier = 1.0;
+      spawnInterval = 2500;
+      isGameRunning = true;
+
+      document.getElementById('score-val').innerText = score;
+      document.getElementById('level-val').innerText = level;
+      updateHeartsUI();
+
+      // 캔버스 초기화
+      const canvas = document.getElementById('game-canvas');
+      canvas.innerHTML = '<div class="absolute bottom-0 left-0 right-0 h-2 bg-gradient-to-r from-red-600 to-indigo-600 animate-pulse border-t border-red-500/50"></div>';
+
+      // 포커스 주기
+      const inputEl = document.getElementById('game-input');
+      inputEl.value = "";
+      inputEl.focus();
+
+      // 이벤트 바인딩 (엔터 키)
+      inputEl.onkeydown = function(e) {
+        if (e.key === 'Enter') {
+          checkInputSubmit();
+        }
+      };
+
+      // 타이머 및 애니메이션 시작
+      lastTime = performance.now();
+      gameLoopId = requestAnimationFrame(updateGame);
+      
+      startSpawning();
+    }
+
+    // 빗방울 생성 루프
+    function startSpawning() {
+      if (spawnTimer) clearInterval(spawnTimer);
+      spawnTimer = setInterval(() => {
+        if (isGameRunning) {
+          spawnDroplet();
+        }
+      }, spawnInterval);
+    }
+
+    // 원소 빗방울 무작위 생성
+    function spawnDroplet() {
+      const canvas = document.getElementById('game-canvas');
+      const canvasWidth = canvas.clientWidth;
+      
+      // 랜덤 원소 선택
+      const randElement = elementData[Math.floor(Math.random() * elementData.length)];
+      
+      // 질문 유형 설정: 0이면 '기호를 보여주고 이름을 맞추기', 1이면 '이름을 보여주고 기호를 맞추기'
+      const type = Math.random() > 0.5 ? 0 : 1;
+      
+      let displayText = "";
+      let answerText = "";
+      let isSymbol = false; // 타겟 문자의 종류
+
+      if (type === 0) {
+        displayText = randElement.symbol; // 기호가 떨어짐
+        answerText = randElement.name;     // 한글 이름을 입력해야 함
+        isSymbol = true;
+      } else {
+        displayText = randElement.name;    // 이름이 떨어짐
+        answerText = randElement.symbol;   // 원소 기호를 입력해야 함 (대소문자 구별)
+        isSymbol = false;
+      }
+
+      // 빗방울 엘리먼트 생성
+      const dropletEl = document.createElement('div');
+      dropletEl.className = `droplet absolute px-4 py-3 rounded-2xl shadow-lg border font-bold flex flex-col items-center justify-center transition-transform duration-100`;
+      
+      // 기호인지 이름인지에 따라 세련된 스킨 부여
+      if (isSymbol) {
+        dropletEl.classList.add('bg-indigo-950/90', 'border-indigo-400', 'text-indigo-200');
+      } else {
+        dropletEl.classList.add('bg-emerald-950/90', 'border-emerald-400', 'text-emerald-200');
+      }
+
+      // 내부에 불필요한 가이드 텍스트를 삭제하고 원소 정보만 깔끔하게 노출
+      dropletEl.innerHTML = `
+        <span class="text-xl md:text-2xl tracking-wide title-font">${displayText}</span>
+      `;
+
+      // 가로 위치 랜덤 (안전 마진 고려)
+      const width = 120;
+      const xPos = Math.random() * (canvasWidth - width - 40) + 20;
+      dropletEl.style.left = `${xPos}px`;
+      dropletEl.style.top = `-60px`;
+      dropletEl.style.width = `${width}px`;
+
+      canvas.appendChild(dropletEl);
+
+      // 객체 데이터 구조 저장
+      droplets.push({
+        element: dropletEl,
+        y: -60,
         x: xPos,
-        y: 0,
-      }
-    ]);
-  }, []);
+        answer: answerText,
+        display: displayText,
+        isSymbol: isSymbol
+      });
+    }
 
-  // --- 게임 루프 (떨어지는 애니메이션) ---
-  useEffect(() => {
-    if (screen !== 'game') return;
+    // 메인 물리 업데이트 루프 (애니메이션프레임)
+    function updateGame(timestamp) {
+      if (!isGameRunning) return;
 
-    // 레벨에 따른 속도 및 스폰 주기 설정 (전체적으로 속도 하향 조정)
-    const currentSpeed = 0.15 + (level * 0.05); // 기존보다 떨어지는 속도 대폭 감소 (기본속도 0.5->0.15)
-    const spawnRate = Math.max(1200, 3000 - (level * 200)); // 단어 생성 주기도 약간 늘려서 밸런스 조절
+      const delta = (timestamp - lastTime) / 1000;
+      lastTime = timestamp;
 
-    // 단어 낙하 루프
-    const updateGame = () => {
-      setActiveWords(prevWords => {
-        let missedCount = 0;
-        const nextWords = prevWords.map(word => ({
-          ...word,
-          y: word.y + currentSpeed
-        })).filter(word => {
-          if (word.y >= 90) { // 화면 하단 도달 시
-            missedCount++;
-            return false;
+      const canvas = document.getElementById('game-canvas');
+      const canvasHeight = canvas.clientHeight;
+
+      for (let i = droplets.length - 1; i >= 0; i--) {
+        const drop = droplets[i];
+        
+        // 하강 속도 결정 (레벨에 비례하여 속도 상승)
+        const fallSpeed = (60 + (level * 18)) * speedMultiplier;
+        drop.y += fallSpeed * delta;
+        
+        drop.element.style.transform = `translateY(${drop.y}px)`;
+
+        // 바닥 충돌 판정
+        if (drop.y >= canvasHeight - 70) {
+          // 폭발 효과음 대신 시각적 이펙트
+          showSplashEffect(drop.x, canvasHeight - 40);
+          
+          // 생명 감수
+          lives--;
+          updateHeartsUI();
+          
+          // 빗방울 제거
+          drop.element.remove();
+          droplets.splice(i, 1);
+
+          // 게임 오버 체크
+          if (lives <= 0) {
+            endGame();
+            return;
           }
-          return true;
+        }
+      }
+
+      gameLoopId = requestAnimationFrame(updateGame);
+    }
+
+    // 입력값 검증 및 처리
+    function checkInputSubmit() {
+      if (!isGameRunning) return;
+
+      const inputEl = document.getElementById('game-input');
+      const typedValue = inputEl.value.trim();
+      
+      if (!typedValue) return;
+
+      let matchedIndex = -1;
+
+      // 화면에 있는 빗방울 중 정답을 일치하는 가장 아래에 있는 빗방울 찾기
+      for (let i = 0; i < droplets.length; i++) {
+        // 대소문자 중요: 원소 기호는 대소문자 구분함
+        if (droplets[i].answer === typedValue) {
+          // 매칭 성공
+          matchedIndex = i;
+          break;
+        }
+      }
+
+      if (matchedIndex !== -1) {
+        const matched = droplets[matchedIndex];
+        
+        // 맞춘 빗방울 파괴 애니메이션 효과
+        showDestroyEffect(matched.x + 60, matched.y + 30);
+        
+        // 점수 획득
+        score += 10;
+        document.getElementById('score-val').innerText = score;
+
+        // 레벨업 및 속도 증가 시스템 (100점당 레벨업)
+        const newLevel = Math.floor(score / 100) + 1;
+        if (newLevel > level) {
+          level = newLevel;
+          document.getElementById('level-val').innerText = level;
+          
+          // 주기 단축 (최대 1000ms 속도)
+          spawnInterval = Math.max(1000, 2500 - (level * 150));
+          startSpawning();
+          
+          // 레벨업 알림 이펙트
+          showLevelUpNotice();
+        }
+
+        // 요소 제거
+        matched.element.remove();
+        droplets.splice(matchedIndex, 1);
+        
+        // 정답 시 입력창 리셋
+        inputEl.value = "";
+      } else {
+        // 오답 시 입력 필드 글자 즉시 비우기 및 붉은색 흔들림 효과
+        inputEl.value = "";
+        inputEl.classList.add('border-red-500', 'animate-shake');
+        setTimeout(() => {
+          inputEl.classList.remove('border-red-500', 'animate-shake');
+        }, 300);
+      }
+    }
+
+    // 모바일/태블릿 대소문자 변환 토글 편의 기능
+    function toggleCase() {
+      const inputEl = document.getElementById('game-input');
+      const val = inputEl.value;
+      if (!val) return;
+
+      // 첫 자 대문자, 두 번째 자 소문자로 바꾸거나 토글
+      if (val.length === 1) {
+        inputEl.value = val === val.toUpperCase() ? val.toLowerCase() : val.toUpperCase();
+      } else if (val.length === 2) {
+        // 원소기호 최적화 (예: Na)
+        inputEl.value = val.charAt(0).toUpperCase() + val.charAt(1).toLowerCase();
+      }
+      inputEl.focus();
+    }
+
+    // 생명 UI 갱신
+    function updateHeartsUI() {
+      const heartsContainer = document.getElementById('hearts');
+      heartsContainer.innerHTML = "";
+      for (let i = 0; i < 5; i++) {
+        const heart = document.createElement('i');
+        if (i < lives) {
+          heart.className = "fa-solid fa-heart animate-pulse";
+        } else {
+          heart.className = "fa-regular fa-heart text-slate-600";
+        }
+        heartsContainer.appendChild(heart);
+      }
+    }
+
+    // 시각 이펙트: 빗방울 파열 효과
+    function showDestroyEffect(x, y) {
+      const canvas = document.getElementById('game-canvas');
+      const effect = document.createElement('div');
+      effect.className = "absolute pointer-events-none text-teal-400 font-extrabold text-lg transition-all duration-500 transform -translate-x-1/2 -translate-y-1/2 z-20";
+      effect.style.left = `${x}px`;
+      effect.style.top = `${y}px`;
+      effect.innerHTML = `<i class="fa-solid fa-sparkles text-yellow-300 mr-1"></i>정답!`;
+      
+      canvas.appendChild(effect);
+      
+      setTimeout(() => {
+        effect.style.transform = "translate(-50%, -120%) scale(1.5)";
+        effect.style.opacity = "0";
+      }, 50);
+
+      setTimeout(() => effect.remove(), 600);
+    }
+
+    // 시각 이펙트: 바닥 충돌 물방울 효과
+    function showSplashEffect(x, y) {
+      const canvas = document.getElementById('game-canvas');
+      const splash = document.createElement('div');
+      splash.className = "absolute pointer-events-none w-10 h-10 border-2 border-red-500 rounded-full transition-all duration-300 transform -translate-x-1/2 -translate-y-1/2 z-20";
+      splash.style.left = `${x + 60}px`;
+      splash.style.top = `${y}px`;
+      
+      canvas.appendChild(splash);
+
+      setTimeout(() => {
+        splash.style.width = "60px";
+        splash.style.height = "60px";
+        splash.style.opacity = "0";
+      }, 10);
+
+      setTimeout(() => splash.remove(), 350);
+    }
+
+    // 레벨업 안내 알림
+    function showLevelUpNotice() {
+      const canvas = document.getElementById('game-canvas');
+      const notice = document.createElement('div');
+      notice.className = "absolute top-1/3 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-indigo-600/90 text-white px-6 py-3 rounded-2xl border border-indigo-400 shadow-2xl z-30 font-bold title-font text-center animate-bounce text-lg";
+      notice.innerHTML = `
+        <div class="text-yellow-300 text-2xl"><i class="fa-solid fa-circle-chevron-up"></i></div>
+        <div>난이도 상승! LEVEL ${level}</div>
+        <p class="text-xs font-normal text-indigo-200 mt-1">속도가 더 빨라집니다!</p>
+      `;
+      canvas.appendChild(notice);
+      setTimeout(() => {
+        notice.style.transition = "opacity 0.8s";
+        notice.style.opacity = "0";
+      }, 1500);
+      setTimeout(() => notice.remove(), 2300);
+    }
+
+    // 게임 종료
+    function endGame() {
+      isGameRunning = false;
+      cancelAnimationFrame(gameLoopId);
+      if (spawnTimer) clearInterval(spawnTimer);
+
+      // 스크린 전환
+      document.getElementById('game-screen').classList.add('hidden');
+      document.getElementById('result-screen').classList.remove('hidden');
+
+      // 최종 데이터 랜더링
+      document.getElementById('result-student-info').innerText = `${studentNumber} ${studentName} 학생의 과학 실험 보고서`;
+      document.getElementById('final-score').innerText = `${score}점`;
+      document.getElementById('final-level').innerText = `Lv.${level}`;
+
+      // 점수 구글 스프레드시트에 자동으로 바로 전송 호출
+      submitScoreToGAS();
+    }
+
+    // 나가기 확인 모달
+    function confirmExit() {
+      showAlert("정말로 대회를 포기하고 대기실로 돌아갈까요?\n기록은 저장되지 않습니다.", true, () => {
+        isGameRunning = false;
+        cancelAnimationFrame(gameLoopId);
+        if (spawnTimer) clearInterval(spawnTimer);
+        resetToLobby();
+      });
+    }
+
+    function resetToLobby() {
+      document.getElementById('game-screen').classList.add('hidden');
+      document.getElementById('result-screen').classList.add('hidden');
+      document.getElementById('lobby-screen').classList.remove('hidden');
+      document.getElementById('user-display').classList.add('hidden');
+    }
+
+
+    // --- 리더보드 (순위보더) 실시간 연동 (스프레드시트 API 연동) ---
+    
+    // 랭킹 보기 클릭시 호출
+    async function showLeaderboard() {
+      const modal = document.getElementById('leaderboard-modal');
+      const listContainer = document.getElementById('leaderboard-list');
+      
+      // 모달 즉시 열기
+      modal.classList.remove('hidden');
+      
+      // 로딩 바 시각화
+      listContainer.innerHTML = `
+        <div class="text-center py-8 text-slate-400">
+          <i class="fa-solid fa-spinner animate-spin text-3xl text-indigo-400 mb-2"></i>
+          <p class="text-sm">구글 스프레드시트에서 실시간 순위를 가져오는 중...</p>
+        </div>
+      `;
+
+      // API 연동 주소가 비어있으면 로컬 가상 데이터를 가공해서 표기
+      if (!GAS_WEBAPP_URL) {
+        setTimeout(() => {
+          renderRankingData(localRankings, "로컬 데모 모드 (GAS URL 미설정)");
+        }, 800);
+        return;
+      }
+
+      // 실제 구글 스프레드시트 앱스 스크립트 통신 (GET 요청)
+      try {
+        const response = await fetch(`${GAS_WEBAPP_URL}?action=getRankings`, {
+          method: 'GET',
+          mode: 'cors'
         });
 
-        if (missedCount > 0) {
-          setLives(l => {
-            const newLives = l - missedCount;
-            if (newLives <= 0) {
-              endGame();
+        if (response.ok) {
+          const result = await response.json();
+          if (result && result.status === "success") {
+            renderRankingData(result.data, "실시간 연동 완료");
+          } else {
+            throw new Error(result.message || "데이터 포맷 오류");
+          }
+        } else {
+          throw new Error("HTTP 서버 통신 장애");
+        }
+      } catch (err) {
+        console.error("API Fetch Error:", err);
+        // 오류 발생시 로컬 데모 모드로 대체 출력하며 안내
+        renderRankingData(localRankings, `임시 데이터 (서버 오류: ${err.message})`);
+      }
+    }
+
+    // 랭킹 배열 랜더링
+    function renderRankingData(data, statusMessage) {
+      const listContainer = document.getElementById('leaderboard-list');
+      listContainer.innerHTML = "";
+
+      if (!data || data.length === 0) {
+        listContainer.innerHTML = `<div class="text-center py-6 text-slate-500">등록된 순위 데이터가 아직 없습니다.</div>`;
+        return;
+      }
+
+      // 상위 5명 필터 및 스코어 내림차순 정렬 (서버에서 이미 정렬되어 오지만 클라이언트 안심 정렬)
+      const topFive = [...data]
+        .sort((a, b) => Number(b.스코어) - Number(a.스코어))
+        .slice(0, 5);
+
+      topFive.forEach((item, index) => {
+        const isMe = (studentNumber && studentName && item.학생정보.includes(studentNumber) && item.학생정보.includes(studentName));
+        
+        let medalHTML = "";
+        let borderClass = "border-slate-700/50";
+        let rankColor = "text-slate-400";
+        let bgClass = "bg-slate-900/40";
+
+        if (index === 0) {
+          medalHTML = `<i class="fa-solid fa-trophy text-yellow-400 text-lg"></i>`;
+          borderClass = "border-yellow-500/40";
+          rankColor = "text-yellow-400 font-extrabold";
+          bgClass = "bg-gradient-to-r from-yellow-500/10 to-transparent";
+        } else if (index === 1) {
+          medalHTML = `<i class="fa-solid fa-medal text-slate-300 text-lg"></i>`;
+          borderClass = "border-slate-300/30";
+          rankColor = "text-slate-300 font-extrabold";
+        } else if (index === 2) {
+          medalHTML = `<i class="fa-solid fa-medal text-amber-600 text-lg"></i>`;
+          borderClass = "border-amber-600/30";
+          rankColor = "text-amber-600 font-extrabold";
+        } else {
+          medalHTML = `<span class="w-5 text-center font-bold">${index + 1}</span>`;
+        }
+
+        const rankRow = document.createElement('div');
+        rankRow.className = `flex items-center justify-between p-3.5 rounded-xl border ${borderClass} ${bgClass} ${isMe ? 'ring-2 ring-indigo-500' : ''} transition-all`;
+        
+        rankRow.innerHTML = `
+          <div class="flex items-center space-x-3.5">
+            <div class="flex items-center justify-center w-8 h-8 rounded-full bg-slate-900/80 ${rankColor}">
+              ${medalHTML}
+            </div>
+            <div>
+              <p class="font-bold text-slate-100 ${isMe ? 'text-indigo-300' : ''}">
+                ${item.학생정보}
+                ${isMe ? '<span class="text-xs bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded-full ml-1.5">나</span>' : ''}
+              </p>
+            </div>
+          </div>
+          <div class="text-right">
+            <p class="text-lg font-black text-indigo-400">${item.스코어}<span class="text-xs font-normal text-slate-500 ml-1">점</span></p>
+          </div>
+        `;
+        listContainer.appendChild(rankRow);
+      });
+
+      // 하단에 상태 안내 문구 추가
+      const statusIndicator = document.createElement('div');
+      statusIndicator.className = "text-[10px] text-center text-slate-500 mt-2 italic";
+      statusIndicator.innerText = `상태: ${statusMessage}`;
+      listContainer.appendChild(statusIndicator);
+    }
+
+    function closeLeaderboard() {
+      document.getElementById('leaderboard-modal').classList.add('hidden');
+    }
+
+    // --- 점수 업로드 시스템 (스프레드시트 전송) ---
+    async function submitScoreToGAS() {
+      const loader = document.getElementById('submit-loader');
+
+      // 전송 상태 초기화 및 로딩 표시
+      if (loader) {
+        loader.className = "text-slate-400 text-sm py-2 flex items-center justify-center";
+        loader.innerHTML = `
+          <i class="fa-solid fa-spinner animate-spin mr-2 text-indigo-400 text-lg"></i>
+          <span>구글 스프레드시트에 점수 자동 기록 중...</span>
+        `;
+      }
+
+      const infoString = `${studentNumber} ${studentName}`;
+
+      // 구글 앱스 스크립트 주소가 세팅되어 있지 않은 가상 로컬 테스트 상태인 경우
+      if (!GAS_WEBAPP_URL) {
+        setTimeout(() => {
+          // 로컬 테스트 데이터에 가상 저장
+          const existingIdx = localRankings.findIndex(r => r.학생정보 === infoString);
+          if (existingIdx !== -1) {
+            // 더 높은 스코어 기록 시 업데이트
+            if (score > localRankings[existingIdx].스코어) {
+              localRankings[existingIdx].스코어 = score;
             }
-            return newLives;
+          } else {
+            localRankings.push({ "학생정보": infoString, "스코어": score });
+          }
+
+          if (loader) {
+            loader.className = "text-amber-400 font-bold text-sm py-2 flex items-center justify-center animate-pulse";
+            loader.innerHTML = `
+              <i class="fa-solid fa-triangle-exclamation mr-2 text-lg"></i>
+              <span>로컬 데모 모드 저장 완료!</span>
+            `;
+          }
+          showAlert(`[데모 안내]\n구글 앱스스크립트 연동 주소가 비어있어 로컬에 임시 기록되었습니다!\n\n학생 정보: ${infoString}\n기록된 점수: ${score}점`);
+        }, 1200);
+        return;
+      }
+
+      // 실제 구글 스프레드시트 기록 호출 (POST API)
+      try {
+        const payload = {
+          action: "submitScore",
+          studentInfo: infoString,
+          score: score
+        };
+
+        const response = await fetch(GAS_WEBAPP_URL, {
+          method: "POST",
+          mode: "no-cors", // CORS 제한 회피를 위해 no-cors 사용 시 통신만 보장되고 응답 본문 가독 불가
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (loader) {
+          loader.className = "text-emerald-400 font-bold text-sm py-2 flex items-center justify-center";
+          loader.innerHTML = `
+            <i class="fa-solid fa-circle-check mr-2 text-lg"></i>
+            <span>스프레드시트 자동 기록 성공!</span>
+          `;
+        }
+        showAlert(`축하합니다!\n스프레드시트에 성공적으로 스코어가 누적 등록되었습니다!\n\n학생 정보: ${infoString}\n제출된 점수: ${score}점`);
+
+      } catch (err) {
+        console.error("Score Submit Error:", err);
+        if (loader) {
+          loader.className = "text-red-400 font-bold text-sm py-2 flex items-center justify-center";
+          loader.innerHTML = `
+            <i class="fa-solid fa-circle-exclamation mr-2 text-lg"></i>
+            <span>네트워크 오류로 자동 기록 실패!</span>
+          `;
+        }
+        showAlert(`기록 전송에 실패했습니다.\n네트워크 상태를 확인하고 다시 시도하세요.\n\n오류 내용: ${err.message}`);
+      }
+    }
+  </script>
+
+  <!-- 
+    ======================================================================================
+    ★ 교사 가이드: 구글 스프레드시트 & 앱스 스크립트(GAS) 연동용 코드 가이드 ★
+    ======================================================================================
+    아래에 첨부된 코드를 복사하여 구글 스프레드시트 [확장 프로그램] -> [Apps Script]에 붙여넣고
+    웹 앱으로 배포(액세스 권한: 모든 사람)한 뒤 생성된 URL을 위 파일 내 "GAS_WEBAPP_URL" 변수에 대입하세요.
+
+    1. 구글 스프레드시트의 1번째 시트 이름을 반드시 '순위보더'로 변경해 주세요.
+    2. A1 셀에 '학생정보', B1 셀에 '스코어' 라고 헤더를 명시하세요.
+
+    /* -- Apps Script 소스코드 복사용 --
+    
+    function doGet(e) {
+      var action = e.parameter.action;
+      var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("순위보더");
+      
+      if (action === "getRankings") {
+        var data = sheet.getDataRange().getValues();
+        var headers = data[0]; // A1: 학생정보, B1: 스코어
+        var rankings = [];
+        
+        for (var i = 1; i < data.length; i++) {
+          rankings.push({
+            "학생정보": data[i][0],
+            "스코어": Number(data[i][1])
           });
         }
-        return nextWords;
-      });
-      gameLoopRef.current = requestAnimationFrame(updateGame);
-    };
-
-    gameLoopRef.current = requestAnimationFrame(updateGame);
-
-    // 단어 생성 타이머
-    spawnTimerRef.current = setInterval(spawnWord, spawnRate);
-
-    // 태블릿 키보드가 올라올 때를 대비해 input에 포커스 유지 시도
-    if(inputRef.current) inputRef.current.focus();
-
-    return () => {
-      cancelAnimationFrame(gameLoopRef.current);
-      clearInterval(spawnTimerRef.current);
-    };
-  }, [screen, level, spawnWord]);
-
-  // --- 게임 오버 처리 ---
-  const endGame = () => {
-    setScreen('gameover');
-    cancelAnimationFrame(gameLoopRef.current);
-    clearInterval(spawnTimerRef.current);
-    
-    // 최신 스코어를 전송하기 위해 setTimeout 사용 (state 업데이트 동기화 위함)
-    setTimeout(() => {
-      setScore(currentScore => {
-        submitScore(currentScore);
-        return currentScore;
-      });
-    }, 0);
-  };
-
-  // --- 단어 입력 처리 ---
-  const handleInputSubmit = (e) => {
-    e.preventDefault();
-    const typed = inputValue.trim().toLowerCase(); // 대소문자 무시 처리 (학생 배려)
-    
-    if(!typed) return;
-
-    let matchedId = null;
-    
-    // 화면에 있는 단어 중 정답과 일치하는지 확인 (가장 아래에 있는 단어부터 맞춤)
-    const sortedWords = [...activeWords].sort((a, b) => b.y - a.y);
-    
-    for (let word of sortedWords) {
-      if (word.answer.toLowerCase() === typed) {
-        matchedId = word.id;
-        break;
+        
+        // 점수 기준으로 내림차순 정렬 후 상위 5개만 필터링
+        rankings.sort(function(a, b) {
+          return b.스코어 - a.스코어;
+        });
+        
+        var result = rankings.slice(0, 5);
+        
+        return ContentService.createTextOutput(JSON.stringify({ status: "success", data: result }))
+          .setMimeType(ContentService.MimeType.JSON);
       }
     }
 
-    if (matchedId) {
-      setActiveWords(prev => prev.filter(w => w.id !== matchedId));
-      setScore(s => {
-        const newScore = s + 10;
-        // 100점 단위로 레벨 업
-        if (newScore % 100 === 0) setLevel(l => l + 1);
-        return newScore;
-      });
-      setInputValue('');
-    } else {
-      // 오타 시 화면 흔들림 효과나 이펙트를 줄 수도 있습니다 (생략)
-      setInputValue('');
-    }
-  };
-
-  // === 화면 렌더링 함수들 ===
-
-  // 1. 로그인 화면
-  const renderLogin = () => (
-    <div className="flex flex-col items-center justify-center h-full p-6 bg-gradient-to-b from-blue-900 to-indigo-900 text-white rounded-2xl shadow-2xl">
-      <div className="mb-8 text-center animate-bounce">
-        <Trophy className="w-20 h-20 mx-auto text-yellow-400 mb-4" />
-        <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-yellow-600 drop-shadow-lg">
-          쏘이쌤배
-        </h1>
-        <h2 className="text-3xl md:text-4xl font-bold mt-2">원소기호 산성비 대회</h2>
-      </div>
-
-      <div className="w-full max-w-sm bg-white/10 p-6 rounded-xl backdrop-blur-sm border border-white/20">
-        <label className="block text-sm font-medium mb-2 text-blue-200">참가자 정보 (학번 이름)</label>
-        <input
-          type="text"
-          placeholder="예: 20101 홍길동"
-          className="w-full p-4 mb-6 rounded-lg text-gray-900 text-lg font-bold text-center focus:outline-none focus:ring-4 focus:ring-yellow-400 placeholder-gray-400"
-          value={studentInfo}
-          onChange={(e) => setStudentInfo(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && startGame()}
-        />
+    function doPost(e) {
+      try {
+        var postData = JSON.parse(e.postData.contents);
+        var action = postData.action;
         
-        <div className="flex flex-col gap-3">
-          <button 
-            onClick={startGame}
-            className="w-full flex items-center justify-center gap-2 bg-yellow-400 hover:bg-yellow-500 text-blue-900 p-4 rounded-lg font-bold text-xl transition-transform active:scale-95 shadow-lg"
-          >
-            <Play className="fill-current" /> 게임 시작하기
-          </button>
+        if (action === "submitScore") {
+          var studentInfo = postData.studentInfo;
+          var score = Number(postData.score);
           
-          <button 
-            onClick={() => { fetchLeaderboard(); setScreen('leaderboard'); }}
-            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white p-4 rounded-lg font-bold text-lg transition-transform active:scale-95 shadow-lg"
-          >
-            <Trophy /> 순위보드 확인
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  // 2. 게임 화면
-  const renderGame = () => (
-    <div className="flex flex-col h-full bg-slate-900 text-white relative rounded-2xl overflow-hidden shadow-2xl border-4 border-slate-800">
-      {/* 상단 UI (점수, 레벨, 생명) */}
-      <div className="absolute top-0 w-full flex justify-between p-4 z-10 bg-gradient-to-b from-black/80 to-transparent pointer-events-none">
-        <div className="flex flex-col">
-          <span className="text-yellow-400 font-bold text-2xl drop-shadow-md">점수: {score}</span>
-          <span className="text-blue-300 font-semibold text-lg drop-shadow-md">레벨: {level}</span>
-        </div>
-        <div className="flex text-red-500 gap-1 drop-shadow-md">
-          {[...Array(5)].map((_, i) => (
-            <svg key={i} className={`w-8 h-8 ${i >= lives ? 'opacity-30' : ''}`} fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
-            </svg>
-          ))}
-        </div>
-      </div>
-
-      {/* 게임 낙하 영역 */}
-      <div className="flex-1 relative overflow-hidden bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMSIgZmlsbD0iI2ZmZmZmZjIwIi8+PC9zdmc+')]">
-        {activeWords.map(word => (
-          <div
-            key={word.id}
-            className="absolute p-2 bg-blue-600/80 backdrop-blur rounded-lg shadow-lg border border-blue-400 font-bold text-2xl whitespace-nowrap transition-transform"
-            style={{ 
-              left: `${word.x}%`, 
-              top: `${word.y}%`,
-              transform: 'translateX(-50%)'
-            }}
-          >
-            {word.display}
-          </div>
-        ))}
-      </div>
-
-      {/* 하단 입력 영역 (태블릿 키보드 고려) */}
-      <div className="p-4 bg-slate-800 shrink-0">
-        <div className="text-center text-sm text-gray-400 mb-2">
-          원소기호가 나오면 <span className="text-white">한글</span>로, 한글이 나오면 <span className="text-white">원소기호</span>를 입력하세요!
-        </div>
-        <form onSubmit={handleInputSubmit} className="flex gap-2">
-          <input
-            ref={inputRef}
-            type="text"
-            className="flex-1 p-4 rounded-xl text-center text-xl font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-yellow-400"
-            placeholder="입력 후 엔터(이동)!"
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            autoComplete="off"
-            autoCapitalize="off"
-            autoCorrect="off"
-          />
-        </form>
-      </div>
-    </div>
-  );
-
-  // 3. 게임 오버 화면
-  const renderGameOver = () => (
-    <div className="flex flex-col items-center justify-center h-full p-6 bg-slate-900 text-white rounded-2xl shadow-2xl">
-      <AlertCircle className="w-24 h-24 text-red-500 mb-6 animate-pulse" />
-      <h2 className="text-5xl font-black text-white mb-2">게임 종료!</h2>
-      <p className="text-2xl text-blue-300 mb-8">{studentInfo} 학생의 기록</p>
-      
-      <div className="bg-white/10 p-8 rounded-2xl backdrop-blur-md border border-white/20 text-center w-full max-w-sm mb-8">
-        <p className="text-gray-400 text-lg mb-1">최종 점수</p>
-        <p className="text-6xl font-black text-yellow-400">{score}<span className="text-2xl text-yellow-200"> 점</span></p>
-        <p className="text-gray-400 mt-4">도달 레벨: {level}</p>
-      </div>
-
-      <div className="flex gap-4 w-full max-w-sm">
-        <button 
-          onClick={startGame}
-          className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 p-4 rounded-xl font-bold text-lg transition-transform active:scale-95"
-        >
-          <RefreshCw className="w-5 h-5" /> 다시하기
-        </button>
-        <button 
-          onClick={() => { fetchLeaderboard(); setScreen('leaderboard'); }}
-          className="flex-1 flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 p-4 rounded-xl font-bold text-lg transition-transform active:scale-95"
-        >
-          <Trophy className="w-5 h-5" /> 순위보기
-        </button>
-      </div>
-    </div>
-  );
-
-  // 4. 리더보드 화면
-  const renderLeaderboard = () => (
-    <div className="flex flex-col h-full p-6 bg-gradient-to-br from-indigo-900 to-purple-900 text-white rounded-2xl shadow-2xl">
-      <div className="flex items-center justify-between mb-8">
-        <h2 className="text-3xl font-black flex items-center gap-3 text-yellow-400">
-          <Trophy className="w-8 h-8" /> 명예의 전당
-        </h2>
-        <button 
-          onClick={() => setScreen('login')}
-          className="p-3 bg-white/10 hover:bg-white/20 rounded-full transition-colors"
-        >
-          <Home className="w-6 h-6" />
-        </button>
-      </div>
-
-      <div className="flex-1 bg-white/10 rounded-xl p-4 backdrop-blur-md border border-white/20 overflow-y-auto">
-        {isLoading ? (
-          <div className="flex justify-center items-center h-full text-blue-200">데이터를 불러오는 중...</div>
-        ) : leaderboardData.length === 0 ? (
-          <div className="flex justify-center items-center h-full text-gray-400 text-center">
-            아직 기록이 없습니다.<br/>첫 번째 도전자 되어보세요!
-          </div>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {leaderboardData.map((data, index) => (
-              <div 
-                key={index} 
-                className={`flex items-center justify-between p-4 rounded-lg font-bold
-                  ${index === 0 ? 'bg-yellow-400 text-yellow-900 shadow-lg scale-105 my-2' : 
-                    index === 1 ? 'bg-gray-300 text-gray-900' : 
-                    index === 2 ? 'bg-amber-600 text-amber-100' : 'bg-white/5 text-blue-100'}`}
-              >
-                <div className="flex items-center gap-4">
-                  <span className="text-xl w-6 text-center">{index + 1}</span>
-                  <span className="text-lg">{data.studentInfo}</span>
-                </div>
-                <span className="text-2xl">{data.score}점</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      
-      {!GAS_URL && (
-        <p className="text-center text-xs text-red-300 mt-4 bg-red-900/50 p-2 rounded">
-          * 현재 구글 시트가 연결되지 않아 내 기기에만 저장되는 데모 모드입니다.
-        </p>
-      )}
-    </div>
-  );
-
-  return (
-    <div className="w-full h-screen bg-black flex items-center justify-center p-4 font-sans">
-      <div className="w-full max-w-md h-[85vh] min-h-[600px] bg-slate-900 rounded-3xl shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden relative border-8 border-slate-900">
-        {screen === 'login' && renderLogin()}
-        {screen === 'game' && renderGame()}
-        {screen === 'gameover' && renderGameOver()}
-        {screen === 'leaderboard' && renderLeaderboard()}
-      </div>
-    </div>
-  );
-}
+          var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("순위보더");
+          var data = sheet.getDataRange().getValues();
+          
+          var userFound = false;
+          var rowIndex = -1;
+          
+          // 기존 학생 정보가 있는지 검사 후 점수 갱신 또는 신규 등록
+          for (var i = 1; i < data.length; i++) {
+            if (data[i][0] === studentInfo) {
+              userFound = true;
+              rowIndex = i + 1; // 1-based index 보정
+              break;
+            }
+          }
+          
+          if (userFound) {
+            var currentScore = Number(sheet.getRange(rowIndex, 2).getValue());
+            // 기존 점수보다 높은 경우에만 갱신
+            if (score > currentScore) {
+              sheet.getRange(rowIndex, 2).setValue(score);
+            }
+          } else {
+            // 신규 데이터 한 행 추가
+            sheet.appendRow([studentInfo, score]);
+          }
+          
+          return ContentService.createTextOutput(JSON.stringify({ status: "success", message: "기록 완료" }))
+            .setMimeType(ContentService.MimeType.JSON);
+        }
+      } catch (err) {
+        return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.message }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    
+    */
+  -->
+</body>
+</html>
